@@ -87,7 +87,7 @@ pub enum Instruction {
         mode: ExecutionMode,
         optional_literals: Vec<u32>,
     },
-    Capability(Capability),
+    Capability(Option<Capability>),
     TypeVoid {
         result_id: u32,
     },
@@ -264,7 +264,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             mode: ExecutionMode::from_num(operands[1])?,
             optional_literals: operands[2..].to_vec(),
         },
-        17 => Instruction::Capability(Capability::from_num(operands[0])?),
+        17 => Instruction::Capability(Capability::from_num(operands[0]).ok()),
         19 => Instruction::TypeVoid {
             result_id: operands[0],
         },

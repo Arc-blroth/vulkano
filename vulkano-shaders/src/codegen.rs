@@ -212,7 +212,13 @@ pub(super) fn reflect(
                     storage_class,
                     type_id: _,
                 } => storage_class_requirement(storage_class),
-                Instruction::Capability(cap) => capability_requirement(cap),
+                Instruction::Capability(cap) => {
+                    if cap.is_some() {
+                        capability_requirement(cap.as_ref().unwrap())
+                    } else {
+                        DeviceRequirement::None
+                    }
+                },
                 _ => DeviceRequirement::None,
             }
         };
