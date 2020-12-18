@@ -104,6 +104,23 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
             } if result_id == searched => {
                 return format_from_id(doc, type_id, ignore_first_array);
             }
+            &Instruction::TypeStruct {
+                result_id,
+                ref member_types,
+            } if result_id == searched => {
+                // For now we can only support structs
+                // that are tuples of the same type
+                let format = format_from_id(doc, *member_types.get(0).unwrap(), false).0;
+                assert!(member_types[1..].iter().all(|x| format_from_id(doc, *x, false).0 == format));
+                let format = match member_types.len() {
+                    1 => format,
+                    2 => format!("R32G32{}", &format[3..]),
+                    3 => format!("R32G32B32{}", &format[3..]),
+                    4 => format!("R32G32B32A32{}", &format[3..]),
+                    _ => panic!("Found struct tuple with more than 4 elements"),
+                };
+                return (format, 1);
+            }
             _ => (),
         }
     }
@@ -119,7 +136,7 @@ pub fn name_from_id(doc: &Spirv, searched: u32) -> String {
         } = instruction
         {
             if target_id == searched {
-                return name.clone();
+                return name.clone().replace("::", "_");
             }
         }
     }

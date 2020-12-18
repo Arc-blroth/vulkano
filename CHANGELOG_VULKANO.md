@@ -25,6 +25,7 @@
 - Added an option for Vulkano-Shaders macro to automatically generate standard
   traits(Default, PartialEq, etc) implementations for Rust types generated from
   the Shader types, and to derive these structs with external traits.
+- Added support for structure types.
 
 # Version 0.19.0 (2020-06-01)
 
