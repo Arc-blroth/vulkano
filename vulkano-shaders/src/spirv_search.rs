@@ -136,7 +136,7 @@ pub fn name_from_id(doc: &Spirv, searched: u32) -> String {
         } = instruction
         {
             if target_id == searched {
-                return name.clone().replace("::", "_");
+                return sanitize_ident(name);
             }
         }
     }
@@ -153,12 +153,32 @@ pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> 
         } = instruction
         {
             if target_id == searched && member == searched_member {
-                return name.clone();
+                return sanitize_ident(name);
             }
         }
     }
 
     String::from("__unnamed")
+}
+
+/// Sanitizes an arbitrary name into a valid Rust
+/// [identifier](https://doc.rust-lang.org/reference/identifiers.html).
+/// Generally, this will just replace any invalid character with `'_'`.
+/// One character names that invalid are prefixed with `'_'`.
+fn sanitize_ident(name: &String) -> String {
+    let sanitized_name = name.clone().replace(
+        |c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+        "_",
+    );
+    return if sanitized_name.starts_with(|c| char::is_ascii_alphabetic(&c))
+        || (sanitized_name.starts_with('_') && sanitized_name.len() > 1)
+    {
+        sanitized_name
+    } else {
+        let mut prefixed = "_".to_owned();
+        prefixed.push_str(&sanitized_name);
+        prefixed
+    };
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on an id.
