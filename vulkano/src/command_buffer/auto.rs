@@ -1223,16 +1223,18 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn dispatch<Cp, S, Pc>(
+    pub fn dispatch<Cp, S, O, Pc>(
         &mut self,
         dimensions: [u32; 3],
         pipeline: Cp,
         sets: S,
+        dynamic_offsets: O,
         constants: Pc,
     ) -> Result<&mut Self, DispatchError>
     where
         Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
+        O: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
             if !self.compute_allowed {
@@ -1257,6 +1259,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 false,
                 pipeline.clone(),
                 sets,
+                dynamic_offsets
             )?;
 
             self.inner.dispatch(dimensions);
@@ -1268,17 +1271,19 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// To use only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(
+    pub fn draw<V, Gp, S, O, Pc>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
         sets: S,
+        dynamic_offsets: O,
         constants: Pc,
     ) -> Result<&mut Self, DrawError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
+        O: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1305,6 +1310,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 true,
                 pipeline.clone(),
                 sets,
+                dynamic_offsets,
             )?;
             vertex_buffers(
                 &mut self.inner,
@@ -1328,13 +1334,14 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
+    pub fn draw_indexed<V, Gp, S, O, Pc, Ib, I>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
         index_buffer: Ib,
         sets: S,
+        dynamic_offsets: O,
         constants: Pc,
     ) -> Result<&mut Self, DrawIndexedError>
     where
@@ -1342,6 +1349,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         S: DescriptorSetsCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
+        O: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1375,6 +1383,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 true,
                 pipeline.clone(),
                 sets,
+                dynamic_offsets,
             )?;
             vertex_buffers(
                 &mut self.inner,
@@ -1401,13 +1410,14 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Ib>(
+    pub fn draw_indirect<V, Gp, S, O, Pc, Ib>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
         indirect_buffer: Ib,
         sets: S,
+        dynamic_offsets: O,
         constants: Pc,
     ) -> Result<&mut Self, DrawIndirectError>
     where
@@ -1418,6 +1428,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             + Send
             + Sync
             + 'static,
+        O: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1446,6 +1457,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 true,
                 pipeline.clone(),
                 sets,
+                dynamic_offsets,
             )?;
             vertex_buffers(
                 &mut self.inner,
@@ -1469,7 +1481,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(
+    pub fn draw_indexed_indirect<V, Gp, S, O, Pc, Ib, Inb, I>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
@@ -1477,6 +1489,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         index_buffer: Ib,
         indirect_buffer: Inb,
         sets: S,
+        dynamic_offsets: O,
         constants: Pc,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
@@ -1488,6 +1501,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             + Send
             + Sync
             + 'static,
+        O: Iterator<Item = u32> + Send + Sync + 'static,
         I: Index + 'static,
     {
         unsafe {
@@ -1524,6 +1538,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 true,
                 pipeline.clone(),
                 sets,
+                dynamic_offsets,
             )?;
             vertex_buffers(
                 &mut self.inner,
@@ -1846,16 +1861,18 @@ unsafe fn vertex_buffers<P>(
     Ok(())
 }
 
-unsafe fn descriptor_sets<P, Pl, S>(
+unsafe fn descriptor_sets<P, Pl, S, O>(
     destination: &mut SyncCommandBufferBuilder<P>,
     state_cacher: &mut StateCacher,
     gfx: bool,
     pipeline: Pl,
     sets: S,
+    dynamic_offsets: O,
 ) -> Result<(), SyncCommandBufferBuilderError>
 where
     Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
     S: DescriptorSetsCollection,
+    O: Iterator<Item = u32> + Send + Sync + 'static,
 {
     let sets = sets.into_vec();
 
@@ -1876,7 +1893,7 @@ where
     for set in sets.into_iter().skip(first_binding as usize) {
         sets_binder.add(set);
     }
-    sets_binder.submit(gfx, pipeline.clone(), first_binding, iter::empty())?;
+    sets_binder.submit(gfx, pipeline.clone(), first_binding, dynamic_offsets)?;
     Ok(())
 }
 

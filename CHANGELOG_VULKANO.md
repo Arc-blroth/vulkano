@@ -1,5 +1,7 @@
 # Unreleased
 
+- **Breaking** On `AutoCommandBufferBuilder`, a `dynamic_offsets` argument has been added to all methods that take descriptor sets.
+
 # Version 0.20.0 (2020-12-26)
 
 - **Breaking** The `ImmutableImage::from_iter` and `ImmutableImage::from_buffer` can build Mipmaps
