@@ -172,6 +172,10 @@
 //! final output of generated code the user can also use `dump` macro
 //! option(see below).
 //!
+//! ## `generate_structs: false`
+//!
+//! Skip generation of Rust structs from Shader structs.
+//!
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
@@ -275,6 +279,7 @@ struct MacroInput {
     source_kind: SourceKind,
     include_directories: Vec<String>,
     macro_defines: Vec<(String, String)>,
+    generate_structs: bool,
     types_meta: TypesMeta,
     dump: bool,
 }
@@ -282,6 +287,7 @@ struct MacroInput {
 impl Parse for MacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut dump = None;
+        let mut generate_structs = None;
         let mut shader_kind = None;
         let mut source_kind = None;
         let mut include_directories = Vec::new();
@@ -504,6 +510,13 @@ impl Parse for MacroInput {
 
                     types_meta = Some(meta);
                 }
+                "generate_structs" => {
+                    if generate_structs.is_some() {
+                        panic!("Only one `generate_structs` can be defined")
+                    }
+                    let generate_structs_lit: LitBool = input.parse()?;
+                    generate_structs = Some(generate_structs_lit.value);
+                }
                 "dump" => {
                     if dump.is_some() {
                         panic!("Only one `dump` can be defined")
@@ -537,6 +550,7 @@ impl Parse for MacroInput {
             include_directories,
             dump,
             macro_defines,
+            generate_structs: generate_structs.unwrap_or(true),
             types_meta: types_meta.unwrap_or_else(|| TypesMeta::default()),
         })
     }
@@ -573,6 +587,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         codegen::reflect(
             "Shader",
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
+            input.generate_structs,
             input.types_meta,
             input.dump,
         )
@@ -617,7 +632,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!(e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect("Shader", content.as_binary(), input.types_meta, input.dump)
+        codegen::reflect("Shader", content.as_binary(), input.generate_structs, input.types_meta, input.dump)
             .unwrap()
             .into()
     }

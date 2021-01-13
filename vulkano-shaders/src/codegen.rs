@@ -190,6 +190,7 @@ pub fn compile(
 pub(super) fn reflect(
     name: &str,
     spirv: &[u32],
+    generate_structs: bool,
     types_meta: TypesMeta,
     dump: bool,
 ) -> Result<TokenStream, Error> {
@@ -259,7 +260,11 @@ pub(super) fn reflect(
         }
     }
 
-    let structs = structs::write_structs(&doc, &types_meta);
+    let structs = if generate_structs {
+        structs::write_structs(&doc, &types_meta)
+    } else {
+        quote!()
+    };
     let descriptor_sets = descriptor_sets::write_descriptor_sets(&doc, &types_meta);
     let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);
     let uses = &types_meta.uses;
