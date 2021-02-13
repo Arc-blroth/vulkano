@@ -20,6 +20,7 @@ use pipeline::vertex::VertexSource;
 ///
 /// This is only useful if your shaders come up with vertex data on their own, e.g. by inspecting
 /// `gl_VertexIndex`
+#[derive(Copy, Clone)]
 pub struct BufferlessDefinition;
 
 /// Value to be passed as the vertex source for bufferless draw commands.
