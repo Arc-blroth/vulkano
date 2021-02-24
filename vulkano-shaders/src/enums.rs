@@ -65,6 +65,7 @@ enumeration! {
         MemoryModelSimple = 0,
         MemoryModelGLSL450 = 1,
         MemoryModelOpenCL = 2,
+        MemoryModelVulkan = 3,
     } MemoryModel;
 
     typedef enum ExecutionMode_ {
