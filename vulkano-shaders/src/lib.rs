@@ -632,8 +632,14 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!(e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect("Shader", content.as_binary(), input.generate_structs, input.types_meta, input.dump)
-            .unwrap()
-            .into()
+        codegen::reflect(
+            "Shader",
+            content.as_binary(),
+            input.generate_structs,
+            input.types_meta,
+            input.dump,
+        )
+        .unwrap()
+        .into()
     }
 }

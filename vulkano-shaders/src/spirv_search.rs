@@ -111,7 +111,9 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
                 // For now we can only support structs
                 // that are tuples of the same type
                 let format = format_from_id(doc, *member_types.get(0).unwrap(), false).0;
-                assert!(member_types[1..].iter().all(|x| format_from_id(doc, *x, false).0 == format));
+                assert!(member_types[1..]
+                    .iter()
+                    .all(|x| format_from_id(doc, *x, false).0 == format));
                 let format = match member_types.len() {
                     1 => format,
                     2 => format!("R32G32{}", &format[3..]),
