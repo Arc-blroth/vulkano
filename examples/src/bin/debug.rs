@@ -9,7 +9,7 @@
 
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::Dimensions;
+use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
 use vulkano::image::MipmapsCount;
 use vulkano::instance;
@@ -48,8 +48,11 @@ fn main() {
     }
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
-    let layer = "VK_LAYER_LUNARG_standard_validation";
-    let layers = vec![layer];
+    #[cfg(not(target_os = "macos"))]
+    let layers = vec!["VK_LAYER_LUNARG_standard_validation"];
+
+    #[cfg(target_os = "macos")]
+    let layers = vec!["VK_LAYER_KHRONOS_validation"];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance =
@@ -96,7 +99,10 @@ fn main() {
 
         println!(
             "{} {} {}: {}",
-            msg.layer_prefix, ty, severity, msg.description
+            msg.layer_prefix.unwrap_or("unknown"),
+            ty,
+            severity,
+            msg.description
         );
     })
     .ok();
@@ -115,7 +121,7 @@ fn main() {
     let (_, mut queues) = Device::new(
         physical,
         physical.supported_features(),
-        &DeviceExtensions::none(),
+        &DeviceExtensions::required_extensions(physical),
         vec![(queue_family, 0.5)],
     )
     .expect("failed to create device");
@@ -123,9 +129,10 @@ fn main() {
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
-    let dimensions = Dimensions::Dim2d {
+    let dimensions = ImageDimensions::Dim2d {
         width: 4096,
         height: 4096,
+        array_layers: 1,
     };
     const DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
     let _ = ImmutableImage::from_iter(
