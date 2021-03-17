@@ -433,7 +433,7 @@ impl SyncCommandBufferBuilder {
     // After this method has been called, call `prev_cmd_resource` for each buffer or image used
     // by the command.
     #[inline]
-    pub(super) fn append_command<C>(&mut self, command: C)
+    pub fn append_command<C>(&mut self, command: C)
     where
         C: Command + Send + Sync + 'static,
     {

@@ -3606,6 +3606,7 @@ pub struct ImportMemoryFdInfoKHR {
     pub fd: i32,
 }
 
+#[macro_export]
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {

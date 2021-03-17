@@ -86,7 +86,7 @@ use {OomError, SafeDeref};
 /// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
 /// is built, however, it *does* implement `Send` and `Sync`.
 pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
-    inner: SyncCommandBufferBuilder,
+    pub inner: SyncCommandBufferBuilder,
     pool_builder_alloc: P, // Safety: must be dropped after `inner`
     state_cacher: StateCacher,
 

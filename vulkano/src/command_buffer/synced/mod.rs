@@ -9,6 +9,8 @@
 
 //! Contains `SyncCommandBufferBuilder` and `SyncCommandBuffer`.
 
+pub use self::base::Command;
+pub use self::base::FinalCommand;
 pub use self::base::SyncCommandBuffer;
 pub use self::base::SyncCommandBufferBuilder;
 pub use self::base::SyncCommandBufferBuilderError;
