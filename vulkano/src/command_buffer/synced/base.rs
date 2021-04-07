@@ -494,7 +494,7 @@ impl SyncCommandBufferBuilder {
     //   in when the command starts, and the image layout that the image will be transitioned to
     //   during the command. When it comes to buffers, you should pass `Undefined` for both.
     #[inline]
-    pub(super) fn append_command<C>(
+    pub fn append_command<C>(
         &mut self,
         command: C,
         resources: &[(
