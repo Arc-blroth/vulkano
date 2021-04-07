@@ -7,16 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use buffer::BufferAccess;
-use command_buffer::DynamicState;
-use descriptor::DescriptorSet;
-use pipeline::input_assembly::IndexType;
-use pipeline::ComputePipelineAbstract;
-use pipeline::GraphicsPipelineAbstract;
+use crate::buffer::BufferAccess;
+use crate::command_buffer::DynamicState;
+use crate::descriptor::DescriptorSet;
+use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::ComputePipelineAbstract;
+use crate::pipeline::GraphicsPipelineAbstract;
 use smallvec::SmallVec;
 use std::ops::Range;
-use vk;
-use VulkanObject;
+use crate::vk;
+use crate::VulkanObject;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
 /// that were already bound.
@@ -359,22 +359,18 @@ impl<'s> StateCacherVertexBuffers<'s> {
 
 #[cfg(test)]
 mod tests {
-    use buffer::BufferUsage;
-    use buffer::CpuAccessibleBuffer;
-    use command_buffer::state_cacher::StateCacher;
+    use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
+    use crate::command_buffer::state_cacher::StateCacher;
 
     #[test]
     fn vb_caching_single() {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf = CpuAccessibleBuffer::from_data(
-            device,
-            BufferUsage::vertex_buffer(),
-            false,
-            EMPTY.iter(),
-        )
-        .unwrap();
+        let buf =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY)
+                .unwrap();
 
         let mut cacher = StateCacher::new();
 
@@ -396,13 +392,9 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf = CpuAccessibleBuffer::from_data(
-            device,
-            BufferUsage::vertex_buffer(),
-            false,
-            EMPTY.iter(),
-        )
-        .unwrap();
+        let buf =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY)
+                .unwrap();
 
         let mut cacher = StateCacher::new();
 
@@ -436,23 +428,19 @@ mod tests {
             device.clone(),
             BufferUsage::vertex_buffer(),
             false,
-            EMPTY.iter(),
+            EMPTY,
         )
         .unwrap();
         let buf2 = CpuAccessibleBuffer::from_data(
             device.clone(),
             BufferUsage::vertex_buffer(),
             false,
-            EMPTY.iter(),
+            EMPTY,
         )
         .unwrap();
-        let buf3 = CpuAccessibleBuffer::from_data(
-            device,
-            BufferUsage::vertex_buffer(),
-            false,
-            EMPTY.iter(),
-        )
-        .unwrap();
+        let buf3 =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY)
+                .unwrap();
 
         let mut cacher = StateCacher::new();
 

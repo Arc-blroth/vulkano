@@ -7,64 +7,65 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferInner;
+use crate::check_errors;
+use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
+use crate::command_buffer::CommandBufferInheritance;
+use crate::command_buffer::CommandBufferLevel;
+use crate::command_buffer::SecondaryCommandBuffer;
+use crate::command_buffer::SubpassContents;
+use crate::descriptor::descriptor::ShaderStages;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
+use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::ClearValue;
+use crate::format::FormatTy;
+use crate::format::PossibleCompressedFormatDesc;
+use crate::framebuffer::FramebufferAbstract;
+use crate::framebuffer::RenderPassAbstract;
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::pipeline::depth_stencil::StencilFaceFlags;
+use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::viewport::Scissor;
+use crate::pipeline::viewport::Viewport;
+use crate::pipeline::ComputePipelineAbstract;
+use crate::pipeline::GraphicsPipelineAbstract;
+use crate::query::QueryControlFlags;
+use crate::query::UnsafeQueriesRange;
+use crate::query::UnsafeQuery;
+use crate::sampler::Filter;
+use crate::sync::AccessFlagBits;
+use crate::sync::Event;
+use crate::sync::PipelineStages;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
+use std::ffi::CStr;
 use std::fmt;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use buffer::BufferInner;
-use check_errors;
-use command_buffer::pool::UnsafeCommandPoolAlloc;
-use command_buffer::CommandBuffer;
-use command_buffer::Kind;
-use command_buffer::KindOcclusionQuery;
-use command_buffer::SubpassContents;
-use descriptor::descriptor::ShaderStages;
-use descriptor::descriptor_set::UnsafeDescriptorSet;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use device::Device;
-use device::DeviceOwned;
-use format::ClearValue;
-use format::FormatTy;
-use format::PossibleCompressedFormatDesc;
-use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPassAbstract;
-use image::ImageAccess;
-use image::ImageLayout;
-use pipeline::depth_stencil::StencilFaceFlags;
-use pipeline::input_assembly::IndexType;
-use pipeline::viewport::Scissor;
-use pipeline::viewport::Viewport;
-use pipeline::ComputePipelineAbstract;
-use pipeline::GraphicsPipelineAbstract;
-use query::UnsafeQueriesRange;
-use query::UnsafeQuery;
-use sampler::Filter;
-use std::ffi::CStr;
-use sync::AccessFlagBits;
-use sync::Event;
-use sync::PipelineStages;
-use vk;
-use OomError;
-use VulkanObject;
-
 /// Flags to pass when creating a command buffer.
 ///
 /// The safest option is `SimultaneousUse`, but it may be slower than the other two.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Flags {
-    /// The command buffer can be used multiple times, but must not execute more than once
+    /// The command buffer can only be submitted once. Any further submit is forbidden.
+    OneTimeSubmit,
+
+    /// The command buffer can be used multiple times, but must not execute or record more than once
     /// simultaneously.
     None,
 
-    /// The command buffer can be executed multiple times in parallel.
+    /// The command buffer can be executed multiple times in parallel. If it's a secondary command
+    /// buffer, it can be recorded to multiple primary command buffers at once.
     SimultaneousUse,
-
-    /// The command buffer can only be submitted once. Any further submit is forbidden.
-    OneTimeSubmit,
 }
 
 /// Command buffer being built.
@@ -78,6 +79,7 @@ pub enum Flags {
 pub struct UnsafeCommandBufferBuilder {
     command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
+    flags: Flags,
 }
 
 impl fmt::Debug for UnsafeCommandBufferBuilder {
@@ -105,16 +107,16 @@ impl UnsafeCommandBufferBuilder {
     /// > submit invalid commands.
     pub unsafe fn new<R, F>(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        kind: Kind<R, F>,
+        level: CommandBufferLevel<R, F>,
         flags: Flags,
     ) -> Result<UnsafeCommandBufferBuilder, OomError>
     where
         R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
-        let secondary = match kind {
-            Kind::Primary => false,
-            Kind::Secondary { .. } => true,
+        let secondary = match level {
+            CommandBufferLevel::Primary => false,
+            CommandBufferLevel::Secondary(..) => true,
         };
 
         let device = pool_alloc.device().clone();
@@ -127,21 +129,23 @@ impl UnsafeCommandBufferBuilder {
                 Flags::OneTimeSubmit => vk::COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
             };
 
-            let b = match kind {
-                Kind::Secondary {
-                    ref render_pass, ..
-                } if render_pass.is_some() => vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+            let b = match level {
+                CommandBufferLevel::Secondary(ref inheritance)
+                    if inheritance.render_pass.is_some() =>
+                {
+                    vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT
+                }
                 _ => 0,
             };
 
             a | b
         };
 
-        let (rp, sp, fb) = match kind {
-            Kind::Secondary {
+        let (rp, sp, fb) = match level {
+            CommandBufferLevel::Secondary(CommandBufferInheritance {
                 render_pass: Some(ref render_pass),
                 ..
-            } => {
+            }) => {
                 let rp = render_pass.subpass.render_pass().inner().internal_object();
                 let sp = render_pass.subpass.index();
                 let fb = match render_pass.framebuffer {
@@ -157,28 +161,26 @@ impl UnsafeCommandBufferBuilder {
             _ => (0, 0, 0),
         };
 
-        let (oqe, qf, ps) = match kind {
-            Kind::Secondary {
+        let (oqe, qf, ps) = match level {
+            CommandBufferLevel::Secondary(CommandBufferInheritance {
                 occlusion_query,
                 query_statistics_flags,
                 ..
-            } => {
+            }) => {
                 let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
                 debug_assert!(ps == 0 || device.enabled_features().pipeline_statistics_query);
 
                 let (oqe, qf) = match occlusion_query {
-                    KindOcclusionQuery::Allowed {
-                        control_precise_allowed,
-                    } => {
+                    Some(flags) => {
                         debug_assert!(device.enabled_features().inherited_queries);
-                        let qf = if control_precise_allowed {
+                        let qf = if flags.precise {
                             vk::QUERY_CONTROL_PRECISE_BIT
                         } else {
                             0
                         };
                         (vk::TRUE, qf)
                     }
-                    KindOcclusionQuery::Forbidden => (0, 0),
+                    None => (0, 0),
                 };
 
                 (oqe, qf, ps)
@@ -209,6 +211,7 @@ impl UnsafeCommandBufferBuilder {
         Ok(UnsafeCommandBufferBuilder {
             command_buffer: pool_alloc.internal_object(),
             device: device.clone(),
+            flags,
         })
     }
 
@@ -222,16 +225,17 @@ impl UnsafeCommandBufferBuilder {
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.command_buffer,
                 device: self.device.clone(),
+                flags: self.flags,
             })
         }
     }
 
     /// Calls `vkCmdBeginQuery` on the builder.
     #[inline]
-    pub unsafe fn begin_query(&mut self, query: UnsafeQuery, precise: bool) {
+    pub unsafe fn begin_query(&mut self, query: UnsafeQuery, flags: QueryControlFlags) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        let flags = if precise {
+        let flags = if flags.precise {
             vk::QUERY_CONTROL_PRECISE_BIT
         } else {
             0
@@ -1006,21 +1010,21 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
-    pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
+    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) {
         debug_assert!({
-            let max_dims = self
+            let max_group_counts = self
                 .device()
                 .physical_device()
                 .limits()
                 .max_compute_work_group_count();
-            dimensions[0] <= max_dims[0]
-                && dimensions[1] <= max_dims[1]
-                && dimensions[2] <= max_dims[2]
+            group_counts[0] <= max_group_counts[0]
+                && group_counts[1] <= max_group_counts[1]
+                && group_counts[2] <= max_group_counts[2]
         });
 
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdDispatch(cmd, dimensions[0], dimensions[1], dimensions[2]);
+        vk.CmdDispatch(cmd, group_counts[0], group_counts[1], group_counts[2]);
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
@@ -1033,7 +1037,7 @@ impl UnsafeCommandBufferBuilder {
         let cmd = self.internal_object();
 
         let inner = buffer.inner();
-        debug_assert!(inner.offset < buffer.size());
+        debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage_indirect_buffer());
         debug_assert_eq!(inner.offset % 4, 0);
 
@@ -1603,7 +1607,7 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
     #[inline]
     pub fn add<C>(&mut self, cb: &C)
     where
-        C: ?Sized + CommandBuffer,
+        C: ?Sized + SecondaryCommandBuffer,
     {
         // TODO: debug assert that it is a secondary command buffer?
         self.raw_cbs.push(cb.inner().internal_object());
@@ -1962,6 +1966,14 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 pub struct UnsafeCommandBuffer {
     command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
+    flags: Flags,
+}
+
+impl UnsafeCommandBuffer {
+    #[inline]
+    pub fn flags(&self) -> Flags {
+        self.flags
+    }
 }
 
 unsafe impl DeviceOwned for UnsafeCommandBuffer {

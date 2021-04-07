@@ -57,11 +57,11 @@ fn main() {
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Data {
+layout(set = 0, binding = 0) restrict buffer Data {
     uint data[];
 } data;
 
-layout(set = 0, binding = 1) buffer ImmutableData {
+layout(set = 0, binding = 1) readonly restrict buffer ImmutableData {
     uint data;
 } immutable_data;
 
@@ -84,7 +84,6 @@ void main() {
 
     // Create immutable buffer and initialize it
     let immutable_data_buffer = {
-
         // uninitialized(), uninitialized_array() and raw() return two things: the buffer,
         // and a special access that should be used for the initial upload to the buffer.
         let (immutable_data_buffer, immutable_data_buffer_init) = unsafe {

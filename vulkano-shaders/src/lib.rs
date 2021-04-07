@@ -199,11 +199,11 @@ extern crate quote;
 extern crate syn;
 extern crate proc_macro;
 
-use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Result as IoResult};
 use std::path::Path;
+use std::{env, iter::empty};
 
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{
@@ -524,7 +524,7 @@ impl Parse for MacroInput {
                     let dump_lit: LitBool = input.parse()?;
                     dump = Some(dump_lit.value);
                 }
-                name => panic!(format!("Unknown field name: {}", name)),
+                name => panic!("Unknown field name: {}", name),
             }
 
             if !input.is_empty() {
@@ -589,23 +589,25 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
             input.generate_structs,
             input.types_meta,
+            empty(),
             input.dump,
         )
         .unwrap()
         .into()
     } else {
-        let (path, source_code) = match input.source_kind {
-            SourceKind::Src(source) => (None, source),
-            SourceKind::Path(path) => (Some(path.clone()), {
+        let (path, full_path, source_code) = match input.source_kind {
+            SourceKind::Src(source) => (None, None, source),
+            SourceKind::Path(path) => {
                 let full_path = root_path.join(&path);
+                let source_code = read_file_to_string(&full_path)
+                    .expect(&format!("Error reading source from {:?}", path));
 
                 if full_path.is_file() {
-                    read_file_to_string(&full_path)
-                        .expect(&format!("Error reading source from {:?}", path))
+                    (Some(path.clone()), Some(full_path), source_code)
                 } else {
                     panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
                 }
-            }),
+            }
             SourceKind::Bytes(_) => unreachable!(),
         };
 
@@ -620,7 +622,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             })
             .collect::<Vec<_>>();
 
-        let content = match codegen::compile(
+        let (content, includes) = match codegen::compile(
             path,
             &root_path,
             &source_code,
@@ -629,11 +631,19 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             &input.macro_defines,
         ) {
             Ok(ok) => ok,
-            Err(e) => panic!(e.replace("(s): ", "(s):\n")),
+            Err(e) => panic!("{}", e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect("Shader", content.as_binary(), input.generate_structs, input.types_meta, input.dump)
-            .unwrap()
-            .into()
+        let input_paths = includes.iter().map(|s| s.as_ref()).chain(
+            full_path
+                .as_ref()
+                .map(|p| p.as_path())
+                .map(codegen::path_to_str),
+        );codegen::reflect("Shader", content.as_binary(), input.generate_structs, input.types_meta,
+            input_paths,
+            input.dump,
+        )
+        .unwrap()
+        .into()
     }
 }

@@ -1,10 +1,25 @@
 # Unreleased
-- Added external memory support for `DeviceLocalBuffer` for `Linux`
+<!--
+    Please add new changes at the bottom, preceded by a hyphen -.
+    Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
+-->
+- **Breaking** `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be create, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
+- **Breaking** `Kind` has been renamed to `CommandBufferLevel`, and for secondary command buffers it now contains a single `CommandBufferInheritance` value.
+- **Breaking** `CommandBufferInheritance::occlusion_query` and `UnsafeCommandBufferBuilder::begin_query` now take `QueryControlFlags` instead of a boolean.
+- The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
+- Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
 
+# Version 0.22.0 (2021-03-31)
+
+- **Breaking** Updated all code to Rust 2018 edition.
+- **Breaking** DeviceMemoryBuilder::new() takes in `memory_index` rather than `MemoryType`.
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
   - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
 - **Breaking** `shader!` now accepts structs in shader interfaces decorated with `BufferBlock` rather than `Block`.
+- Fixed missing barriers in dispatch calls
+  - **Breaking** `shader!` no longer marks descriptor sets as readonly as a fallback when it doesn't know
+    - **Breaking** The keyword `readonly` might need to be added in front of the `buffer` keyword in GLSL files to get them working again
 - **Breaking** Changes to image types:
   - Image types no longer implement `ImageViewAccess`.
   - `Dimensions` is removed. Image constructors now take `ImageDimensions`.
@@ -15,11 +30,19 @@
   - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
   - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. `ImageView` implements this trait.
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
-- **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself). The `PoolAlloc` associated type on the `CommandBuffer` trait is also removed, as it's no longer needed.
+- **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself).
+- **Breaking** The `CommandBuffer` trait no longer has the `PoolAlloc` associated type, and has four new methods: `num_buffers`, `buffer`, `num_images` and `image`.
+- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
-
-- Allow `const` usage of features and `BufferUsage`
+- Allow `const` usage of features and `BufferUsage`.
+- Opaque fd and dma-buf import support on `Linux`.
+- `DeviceMemoryMapping` to separate device memory and mappings.
+- Added external memory support for `DeviceLocalBuffer` for Linux.
+- Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
+- `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
+- `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
+- Added a `dispatch_indirect` command to `AutoCommandBufferBuilder`.
 
 # Version 0.21.0 (2021-03-05)
 

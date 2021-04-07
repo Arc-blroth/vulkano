@@ -7,12 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::frame::ambient_lighting_system::AmbientLightingSystem;
+use crate::frame::directional_lighting_system::DirectionalLightingSystem;
+use crate::frame::point_lighting_system::PointLightingSystem;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::CommandBuffer;
+use vulkano::command_buffer::PrimaryAutoCommandBuffer;
+use vulkano::command_buffer::SecondaryCommandBuffer;
 use vulkano::command_buffer::SubpassContents;
 use vulkano::device::Queue;
 use vulkano::format::Format;
@@ -25,10 +29,6 @@ use vulkano::image::AttachmentImage;
 use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAbstract;
 use vulkano::sync::GpuFuture;
-
-use crate::frame::ambient_lighting_system::AmbientLightingSystem;
-use crate::frame::directional_lighting_system::DirectionalLightingSystem;
-use crate::frame::point_lighting_system::PointLightingSystem;
 
 /// System that contains the necessary facilities for rendering a single frame.
 pub struct FrameSystem {
@@ -349,7 +349,7 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<AutoCommandBufferBuilder>,
+    command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Matrix4<f32>,
 }
@@ -439,20 +439,14 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
     where
-        C: CommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 
     /// Returns the dimensions in pixels of the viewport.
@@ -480,24 +474,18 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     ///
     /// All the objects will be colored with an intensity of `color`.
     pub fn ambient_light(&mut self, color: [f32; 3]) {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = self.frame.system.ambient_lighting_system.draw(
-                [dims[0], dims[1]],
-                self.frame.system.diffuse_buffer.clone(),
-                color,
-            );
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        let dims = self.frame.framebuffer.dimensions();
+        let command_buffer = self.frame.system.ambient_lighting_system.draw(
+            [dims[0], dims[1]],
+            self.frame.system.diffuse_buffer.clone(),
+            color,
+        );
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 
     /// Applies an directional lighting to the scene.
@@ -505,26 +493,20 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// All the objects will be colored with an intensity varying between `[0, 0, 0]` and `color`,
     /// depending on the dot product of their normal and `direction`.
     pub fn directional_light(&mut self, direction: Vector3<f32>, color: [f32; 3]) {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = self.frame.system.directional_lighting_system.draw(
-                [dims[0], dims[1]],
-                self.frame.system.diffuse_buffer.clone(),
-                self.frame.system.normals_buffer.clone(),
-                direction,
-                color,
-            );
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        let dims = self.frame.framebuffer.dimensions();
+        let command_buffer = self.frame.system.directional_lighting_system.draw(
+            [dims[0], dims[1]],
+            self.frame.system.diffuse_buffer.clone(),
+            self.frame.system.normals_buffer.clone(),
+            direction,
+            color,
+        );
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 
     /// Applies a spot lighting to the scene.
@@ -533,30 +515,24 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// depending on their distance with `position`. Objects that aren't facing `position` won't
     /// receive any light.
     pub fn point_light(&mut self, position: Vector3<f32>, color: [f32; 3]) {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = {
-                self.frame.system.point_lighting_system.draw(
-                    [dims[0], dims[1]],
-                    self.frame.system.diffuse_buffer.clone(),
-                    self.frame.system.normals_buffer.clone(),
-                    self.frame.system.depth_buffer.clone(),
-                    self.frame.world_to_framebuffer.invert().unwrap(),
-                    position,
-                    color,
-                )
-            };
+        let dims = self.frame.framebuffer.dimensions();
+        let command_buffer = {
+            self.frame.system.point_lighting_system.draw(
+                [dims[0], dims[1]],
+                self.frame.system.diffuse_buffer.clone(),
+                self.frame.system.normals_buffer.clone(),
+                self.frame.system.depth_buffer.clone(),
+                self.frame.world_to_framebuffer.invert().unwrap(),
+                position,
+                color,
+            )
+        };
 
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 }

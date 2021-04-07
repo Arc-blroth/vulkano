@@ -7,6 +7,28 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::command_buffer::submit::SubmitAnyBuilder;
+use crate::command_buffer::submit::SubmitCommandBufferBuilder;
+use crate::command_buffer::sys::UnsafeCommandBuffer;
+use crate::command_buffer::CommandBufferInheritance;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::framebuffer::{FramebufferAbstract, RenderPassAbstract};
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::sync::now;
+use crate::sync::AccessCheckError;
+use crate::sync::AccessError;
+use crate::sync::AccessFlagBits;
+use crate::sync::FlushError;
+use crate::sync::GpuFuture;
+use crate::sync::NowFuture;
+use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStages;
+use crate::SafeDeref;
+use crate::VulkanObject;
 use std::borrow::Cow;
 use std::error;
 use std::fmt;
@@ -15,39 +37,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use buffer::BufferAccess;
-use command_buffer::submit::SubmitAnyBuilder;
-use command_buffer::submit::SubmitCommandBufferBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
-use command_buffer::Kind;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use framebuffer::{FramebufferAbstract, RenderPassAbstract};
-use image::ImageAccess;
-use image::ImageLayout;
-use sync::now;
-use sync::AccessCheckError;
-use sync::AccessError;
-use sync::AccessFlagBits;
-use sync::FlushError;
-use sync::GpuFuture;
-use sync::NowFuture;
-use sync::PipelineStages;
-use SafeDeref;
-use VulkanObject;
-
-pub unsafe trait CommandBuffer: DeviceOwned {
+pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer;
-
-    /*/// Returns the queue family of the command buffer.
-    #[inline]
-    fn queue_family(&self) -> QueueFamily
-        where Self::PoolAlloc: CommandPoolAlloc
-    {
-        self.inner().queue_family()
-    }*/
 
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue, and if so locks it.
@@ -162,17 +154,12 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
-
-    /// Returns a `Kind` value describing the command buffer.
-    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
-
-    // FIXME: lots of other methods
 }
 
-unsafe impl<T> CommandBuffer for T
+unsafe impl<T> PrimaryCommandBuffer for T
 where
     T: SafeDeref,
-    T::Target: CommandBuffer,
+    T::Target: PrimaryCommandBuffer,
 {
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
@@ -213,10 +200,109 @@ where
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
+}
+
+pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
+    /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
+    fn inner(&self) -> &UnsafeCommandBuffer;
+
+    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
+    /// and if so locks it.
+    ///
+    /// If you call this function, then you should call `unlock` afterwards.
+    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
+
+    /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if you haven't called `lock_record` before.
+    unsafe fn unlock(&self);
+
+    /// Returns a `CommandBufferInheritance` value describing the properties that the command
+    /// buffer inherits from its parent primary command buffer.
+    fn inheritance(
+        &self,
+    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
+
+    /// Returns the number of buffers accessed by this command buffer.
+    fn num_buffers(&self) -> usize;
+
+    /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
+    ///
+    /// The valid range is between 0 and `num_buffers()`.
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)>;
+
+    /// Returns the number of images accessed by this command buffer.
+    fn num_images(&self) -> usize;
+
+    /// Returns the `index`th image of this command buffer, or `None` if out of range.
+    ///
+    /// The valid range is between 0 and `num_images()`.
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )>;
+}
+
+unsafe impl<T> SecondaryCommandBuffer for T
+where
+    T: SafeDeref,
+    T::Target: SecondaryCommandBuffer,
+{
+    #[inline]
+    fn inner(&self) -> &UnsafeCommandBuffer {
+        (**self).inner()
+    }
 
     #[inline]
-    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
-        (**self).kind()
+    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+        (**self).lock_record()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock();
+    }
+
+    #[inline]
+    fn inheritance(
+        &self,
+    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+        (**self).inheritance()
+    }
+
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        (**self).num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
+        (**self).buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        (**self).num_images()
+    }
+
+    #[inline]
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )> {
+        (**self).image(index)
     }
 }
 
@@ -226,7 +312,7 @@ where
 pub struct CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     previous: F,
     command_buffer: Cb,
@@ -241,7 +327,7 @@ where
 unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -361,7 +447,7 @@ where
 unsafe impl<F, Cb> DeviceOwned for CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -372,7 +458,7 @@ where
 impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     fn drop(&mut self) {
         unsafe {
@@ -411,7 +497,7 @@ pub enum CommandBufferExecError {
 
 impl error::Error for CommandBufferExecError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CommandBufferExecError::AccessError { ref error, .. } => Some(error),
             _ => None,
@@ -430,12 +516,12 @@ impl fmt::Display for CommandBufferExecError {
                     "access to a resource has been denied",
                 CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
                     "the command buffer or one of the secondary command buffers it executes was \
-                 created with the \"one time submit\" flag, but has already been submitted it \
+                 created with the \"one time submit\" flag, but has already been submitted in \
                  the past"
                 }
                 CommandBufferExecError::ExclusiveAlreadyInUse => {
                     "the command buffer or one of the secondary command buffers it executes is \
-                 already in use by the GPU and was not created with the \"concurrent\" flag"
+                 already in use was not created with the \"concurrent\" flag"
                 }
             }
         )

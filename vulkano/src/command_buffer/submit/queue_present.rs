@@ -13,18 +13,18 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ptr;
 
-use device::DeviceOwned;
-use device::Queue;
-use swapchain::PresentRegion;
-use swapchain::Swapchain;
-use sync::Semaphore;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::swapchain::PresentRegion;
+use crate::swapchain::Swapchain;
+use crate::sync::Semaphore;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use SynchronizedVulkanObject;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SynchronizedVulkanObject;
+use crate::VulkanObject;
 
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here
@@ -224,7 +224,7 @@ pub enum SubmitPresentError {
 
 impl error::Error for SubmitPresentError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SubmitPresentError::OomError(ref err) => Some(err),
             _ => None,

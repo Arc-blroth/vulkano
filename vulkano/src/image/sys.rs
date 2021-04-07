@@ -24,26 +24,26 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
-use format::Format;
-use format::FormatFeatures;
-use format::FormatTy;
-use format::PossibleYcbcrFormatDesc;
-use image::ImageAspect;
-use image::ImageCreateFlags;
-use image::ImageDimensions;
-use image::ImageUsage;
-use image::MipmapsCount;
-use memory::DeviceMemory;
-use memory::DeviceMemoryAllocError;
-use memory::MemoryRequirements;
-use sync::Sharing;
+use crate::device::Device;
+use crate::format::Format;
+use crate::format::FormatFeatures;
+use crate::format::FormatTy;
+use crate::format::PossibleYcbcrFormatDesc;
+use crate::image::ImageAspect;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageDimensions;
+use crate::image::ImageUsage;
+use crate::image::MipmapsCount;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MemoryRequirements;
+use crate::sync::Sharing;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// A storage for pixels or arbitrary data.
 ///
@@ -928,7 +928,7 @@ pub enum ImageCreationError {
 
 impl error::Error for ImageCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             ImageCreationError::AllocError(ref err) => Some(err),
             _ => None,
@@ -1031,9 +1031,9 @@ mod tests {
     use super::ImageUsage;
     use super::UnsafeImage;
 
-    use format::Format;
-    use image::ImageDimensions;
-    use sync::Sharing;
+    use crate::format::Format;
+    use crate::image::ImageDimensions;
+    use crate::sync::Sharing;
 
     #[test]
     fn create_sampled() {

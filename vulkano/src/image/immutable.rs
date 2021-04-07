@@ -7,50 +7,49 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferUsage;
+use crate::buffer::CpuAccessibleBuffer;
+use crate::buffer::TypedBufferAccess;
+use crate::command_buffer::AutoCommandBufferBuilder;
+use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::PrimaryAutoCommandBuffer;
+use crate::command_buffer::PrimaryCommandBuffer;
+use crate::device::Device;
+use crate::device::Queue;
+use crate::format::AcceptsPixels;
+use crate::format::Format;
+use crate::format::FormatDesc;
+use crate::image::sys::ImageCreationError;
+use crate::image::sys::UnsafeImage;
+use crate::image::traits::ImageAccess;
+use crate::image::traits::ImageContent;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageDescriptorLayouts;
+use crate::image::ImageDimensions;
+use crate::image::ImageInner;
+use crate::image::ImageLayout;
+use crate::image::ImageUsage;
+use crate::image::MipmapsCount;
+use crate::instance::QueueFamily;
+use crate::memory::pool::AllocFromRequirementsFilter;
+use crate::memory::pool::AllocLayout;
+use crate::memory::pool::MappingRequirement;
+use crate::memory::pool::MemoryPool;
+use crate::memory::pool::MemoryPoolAlloc;
+use crate::memory::pool::PotentialDedicatedAllocation;
+use crate::memory::pool::StdMemoryPoolAlloc;
+use crate::memory::DedicatedAlloc;
+use crate::sampler::Filter;
+use crate::sync::AccessError;
+use crate::sync::NowFuture;
+use crate::sync::Sharing;
 use smallvec::SmallVec;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-
-use buffer::BufferAccess;
-use buffer::BufferUsage;
-use buffer::CpuAccessibleBuffer;
-use buffer::TypedBufferAccess;
-use command_buffer::AutoCommandBuffer;
-use command_buffer::AutoCommandBufferBuilder;
-use command_buffer::CommandBuffer;
-use command_buffer::CommandBufferExecFuture;
-use device::Device;
-use device::Queue;
-use format::AcceptsPixels;
-use format::Format;
-use format::FormatDesc;
-use image::sys::ImageCreationError;
-use image::sys::UnsafeImage;
-use image::traits::ImageAccess;
-use image::traits::ImageContent;
-use image::ImageCreateFlags;
-use image::ImageDescriptorLayouts;
-use image::ImageDimensions;
-use image::ImageInner;
-use image::ImageLayout;
-use image::ImageUsage;
-use image::MipmapsCount;
-use instance::QueueFamily;
-use memory::pool::AllocFromRequirementsFilter;
-use memory::pool::AllocLayout;
-use memory::pool::MappingRequirement;
-use memory::pool::MemoryPool;
-use memory::pool::MemoryPoolAlloc;
-use memory::pool::PotentialDedicatedAllocation;
-use memory::pool::StdMemoryPoolAlloc;
-use memory::DedicatedAlloc;
-use sampler::Filter;
-use sync::AccessError;
-use sync::NowFuture;
-use sync::Sharing;
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it.
@@ -121,8 +120,8 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     }
 }
 
-fn generate_mipmaps<Img>(
-    cbb: &mut AutoCommandBufferBuilder,
+fn generate_mipmaps<L, Img>(
+    cbb: &mut AutoCommandBufferBuilder<L>,
     image: Arc<Img>,
     dimensions: ImageDimensions,
     layout: ImageLayout,
@@ -328,7 +327,7 @@ impl<F> ImmutableImage<F> {
     ) -> Result<
         (
             Arc<Self>,
-            CommandBufferExecFuture<NowFuture, AutoCommandBuffer>,
+            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
         ImageCreationError,
     >
@@ -357,7 +356,7 @@ impl<F> ImmutableImage<F> {
     ) -> Result<
         (
             Arc<Self>,
-            CommandBufferExecFuture<NowFuture, AutoCommandBuffer>,
+            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
         ImageCreationError,
     >

@@ -19,14 +19,14 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
-use device::DeviceOwned;
+use crate::device::Device;
+use crate::device::DeviceOwned;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 pub struct UnsafeQueryPool {
     pool: vk::QueryPool,
@@ -181,7 +181,12 @@ pub enum QueryType {
     Timestamp,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryControlFlags {
+    pub precise: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 pub struct QueryPipelineStatisticFlags {
     pub input_assembly_vertices: bool,
     pub input_assembly_primitives: bool,
@@ -276,7 +281,7 @@ pub enum QueryPoolCreationError {
 
 impl error::Error for QueryPoolCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -364,11 +369,11 @@ unsafe impl DeviceOwned for OcclusionQueriesPool {
 
 #[cfg(test)]
 mod tests {
-    use query::OcclusionQueriesPool;
-    use query::QueryPipelineStatisticFlags;
-    use query::QueryPoolCreationError;
-    use query::QueryType;
-    use query::UnsafeQueryPool;
+    use crate::query::OcclusionQueriesPool;
+    use crate::query::QueryPipelineStatisticFlags;
+    use crate::query::QueryPoolCreationError;
+    use crate::query::QueryType;
+    use crate::query::UnsafeQueryPool;
 
     #[test]
     fn occlusion_create() {
